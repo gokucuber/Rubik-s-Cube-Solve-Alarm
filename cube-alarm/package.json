@@ -1,0 +1,22 @@
+{
+  "name": "cube-alarm",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "test": "tsx src/cube.test.ts && tsx src/challenge.test.ts"
+  },
+  "dependencies": {
+    "gan-web-bluetooth": "^3.0.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/web-bluetooth": "^0.0.20",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
