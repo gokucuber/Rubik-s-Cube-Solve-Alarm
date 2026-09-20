@@ -6,6 +6,7 @@ import {
   acquireWakeLock,
   blip,
   keepWakeLockAlive,
+  previewAlarm,
   releaseWakeLock,
   startAlarm,
   stopAlarm,
@@ -276,6 +277,7 @@ function setupScreen(): string {
         <span>アラーム音${s.soundName ? `： ${esc(s.soundName)}` : "（未選択なら電子音）"}</span>
         <input type="file" id="sound" accept="audio/*" />
       </div>
+      <button id="preview">音を試聴する（4秒）</button>
     </div>
 
     <div class="panel">
@@ -285,13 +287,16 @@ function setupScreen(): string {
         cube
           ? `<p class="note">${
               facelets === SOLVED
-                ? "キューブはそろっています。このまま接続を保って枕元へ。"
+                ? "キューブはそろっています。"
                 : "キューブがそろっていません。寝る前にそろえておくと朝がスムーズです。"
-            }</p>`
+            }</p>
+             <button id="disconnect">切断する</button>
+             <p class="note">接続を保ったまま寝てもいいですが、キューブのバッテリーを一晩使います。
+             切断しても朝に繋ぎ直せるので、残量に不安があれば切ってください。</p>`
           : `<button id="connect"${connecting ? " disabled" : ""}>${
               connecting ? "接続中…" : "キューブを接続して確認"
             }</button>
-             <p class="note">寝る前に繋いでおくと、バッテリー残量を確認でき、朝は接続手順を飛ばせます。</p>`
+             <p class="note">バッテリー残量の確認用です。繋ぎっぱなしにする必要はありません。</p>`
       }
     </div>
 
@@ -454,6 +459,16 @@ function wire() {
   });
 
   on("connect", "click", () => void connect());
+  on("disconnect", "click", () => {
+    void cube?.disconnect();
+    cube = null;
+    battery = null;
+    render();
+  });
+  on("preview", "click", async () => {
+    await unlockAudio(sound);
+    await previewAlarm(settings.rampSeconds);
+  });
   on("arm", "click", () => void arm());
   on("disarm", "click", disarm);
   on("again", "click", () => {

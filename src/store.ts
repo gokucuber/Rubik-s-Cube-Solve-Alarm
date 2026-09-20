@@ -25,7 +25,7 @@ export const DEFAULTS: Settings = {
   limitSeconds: 20,
   resetOnFail: true,
   scrambleLength: 22,
-  rampSeconds: 20,
+  rampSeconds: 8,
   cubeMac: null,
   soundName: null,
 };
