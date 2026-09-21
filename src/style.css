@@ -248,19 +248,20 @@ button:disabled {
 
 .scramble {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
 }
 
 .move {
   background: var(--raised);
   border-left: 4px solid var(--dim);
   border-radius: 8px;
-  padding: 14px 6px;
+  padding: 10px 4px;
   text-align: center;
-  font-size: clamp(22px, 6.5vw, 30px);
+  font-size: clamp(20px, 6vw, 28px);
   font-weight: 700;
   letter-spacing: 0.01em;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
 }
 
 .move.U {
@@ -354,5 +355,167 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   .ringing {
     animation: none;
+  }
+}
+
+.center {
+  text-align: center;
+  margin-inline: auto;
+}
+
+/* ---------- scramble progress ---------- */
+
+/* Finished moves fade back so the eye lands on what is next. */
+.move.done {
+  opacity: 0.28;
+}
+
+.move.current {
+  background: var(--ink);
+  color: var(--bg);
+  transform: scale(1.06);
+}
+
+/* Double turn with one quarter already applied: fill half the cell. */
+.move.half {
+  background: linear-gradient(to right, var(--ink) 50%, var(--raised) 50%);
+  color: var(--ink);
+  -webkit-text-stroke: 0.5px var(--bg);
+}
+
+.move.stuck {
+  outline: 2px dashed var(--face-d);
+  outline-offset: 2px;
+}
+
+.fix {
+  display: none;
+  border: 2px solid var(--face-d);
+  border-radius: 12px;
+  padding: 12px;
+  gap: 10px;
+  flex-direction: column;
+  background: #221f12;
+}
+
+.fix.show {
+  display: flex;
+}
+
+.fix-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--face-d);
+}
+
+.fix-body {
+  margin: 0;
+  font-size: 15px;
+}
+
+.fix-moves .move {
+  background: var(--face-d);
+  color: #1a1600;
+}
+
+/* ---------- live cube net ---------- */
+
+.net {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  margin-inline: auto;
+  border-radius: 8px;
+  outline: 2px solid transparent;
+  outline-offset: 4px;
+  transition: outline-color 0.2s;
+}
+
+.net.off {
+  outline-color: var(--face-d);
+}
+
+.net rect {
+  fill: var(--line);
+}
+
+.s.U { fill: var(--face-u); }
+.s.R { fill: var(--face-r); }
+.s.F { fill: var(--face-f); }
+.s.D { fill: var(--face-d); }
+.s.L { fill: var(--face-l); }
+.s.B { fill: var(--face-b); }
+
+/* ---------- scroll-wheel time picker ---------- */
+
+.picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.picker .band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--raised);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.wheel {
+  position: relative;
+  width: 96px;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+  mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+  touch-action: pan-y;
+}
+
+.wheel::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel .opt {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+  font-size: 30px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.1s, font-size 0.1s;
+}
+
+.wheel .opt.on {
+  color: var(--ink);
+  font-size: 40px;
+  font-weight: 700;
+}
+
+.picker .colon {
+  position: relative;
+  font-size: 40px;
+  font-weight: 700;
+  padding-bottom: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .move,
+  .wheel .opt,
+  .net {
+    transition: none;
   }
 }

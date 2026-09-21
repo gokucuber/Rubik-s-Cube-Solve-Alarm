@@ -17,5 +17,5 @@
     "types": ["web-bluetooth", "vite/client"]
   },
   "include": ["src"],
-  "exclude": ["src/cube.test.ts", "src/challenge.test.ts"]
+  "exclude": ["src/*.test.ts"]
 }

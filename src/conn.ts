@@ -1,21 +1,24 @@
 import { connectGanCube, type GanCubeConnection, type GanCubeEvent } from "gan-web-bluetooth";
-import { SOLVED } from "./cube.js";
+import { SOLVED, applyMove } from "./cube.js";
 
 export interface CubeHandle {
   name: string;
   mac: string;
-  /** latest facelet string the cube reports */
-  facelets(): string;
+  /** latest known cube state as a facelet string */
+  state(): string;
   battery(): number | null;
   /** tell the cube its current physical state is solved */
   reset(): Promise<void>;
-  askFacelets(): Promise<void>;
   disconnect(): Promise<void>;
 }
 
 export interface CubeCallbacks {
-  onFacelets(facelets: string): void;
-  onMove(move: string, at: number): void;
+  /**
+   * A new cube state. `move` is the quarter turn that produced it, or null
+   * when the state came from the cube's own full report (first sync, or a
+   * correction after drift). `at` is a performance.now()-based timestamp.
+   */
+  onState(state: string, move: string | null, at: number): void;
   onBattery(level: number): void;
   onDisconnect(): void;
 }
@@ -23,12 +26,20 @@ export interface CubeCallbacks {
 /** Called when the MAC cannot be read automatically and must be typed in. */
 export type MacPrompt = (deviceName: string) => Promise<string | null>;
 
+/** How long the cube must be still before its full report may override ours. */
+const SETTLE_MS = 700;
+
 export async function connectCube(
   cb: CubeCallbacks,
   knownMac: string | null,
   promptForMac: MacPrompt
 ): Promise<CubeHandle> {
-  let facelets = SOLVED;
+  // The cube sends one event per quarter turn, not its whole state, so the
+  // state is maintained here by applying each turn. The cube's own full
+  // report is only used to start from, and to correct drift while idle.
+  let state = SOLVED;
+  let synced = false;
+  let lastMoveAt = -Infinity;
   let battery: number | null = null;
 
   const conn: GanCubeConnection = await connectGanCube(
@@ -43,13 +54,23 @@ export async function connectCube(
 
   conn.events$.subscribe((event: GanCubeEvent) => {
     switch (event.type) {
-      case "FACELETS":
-        facelets = event.facelets;
-        cb.onFacelets(event.facelets);
+      case "MOVE": {
+        if (!synced) return;
+        const at = event.localTimestamp ?? performance.now();
+        lastMoveAt = performance.now();
+        state = applyMove(state, event.move);
+        cb.onState(state, event.move, at);
         break;
-      case "MOVE":
-        cb.onMove(event.move, event.localTimestamp ?? performance.now());
+      }
+      case "FACELETS": {
+        const settled = performance.now() - lastMoveAt > SETTLE_MS;
+        if (!synced || (settled && event.facelets !== state)) {
+          synced = true;
+          state = event.facelets;
+          cb.onState(state, null, performance.now());
+        }
         break;
+      }
       case "BATTERY":
         battery = event.batteryLevel;
         cb.onBattery(event.batteryLevel);
@@ -64,19 +85,21 @@ export async function connectCube(
   await conn.sendCubeCommand({ type: "REQUEST_BATTERY" });
   await conn.sendCubeCommand({ type: "REQUEST_FACELETS" });
 
-  // The cube pushes a facelet event on every turn, but a dropped BLE packet
-  // would leave us out of step. Polling closes that gap cheaply.
+  // Drift check only; turns themselves arrive as they happen.
   const poll = window.setInterval(() => {
     conn.sendCubeCommand({ type: "REQUEST_FACELETS" }).catch(() => {});
-  }, 1000);
+  }, 2000);
 
   return {
     name: conn.deviceName,
     mac: conn.deviceMAC,
-    facelets: () => facelets,
+    state: () => state,
     battery: () => battery,
-    reset: () => conn.sendCubeCommand({ type: "REQUEST_RESET" }),
-    askFacelets: () => conn.sendCubeCommand({ type: "REQUEST_FACELETS" }),
+    reset: async () => {
+      await conn.sendCubeCommand({ type: "REQUEST_RESET" });
+      state = SOLVED;
+      cb.onState(state, null, performance.now());
+    },
     disconnect: async () => {
       clearInterval(poll);
       await conn.disconnect();
