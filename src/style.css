@@ -541,3 +541,109 @@ button.tiny {
     transition: none;
   }
 }
+
+/* ---------- statistics ---------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px 10px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart .axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart .tick {
+  fill: var(--dim);
+  font-size: 10px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .dots circle {
+  fill: var(--dim);
+}
+
+.chart .avg {
+  fill: none;
+  stroke: var(--go);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.log {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.log td {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  vertical-align: baseline;
+}
+
+.log tr:first-child td {
+  border-top: none;
+}
+
+.log .t {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  width: 4.5em;
+}
+
+.log .when {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  width: 5.5em;
+}
+
+/* The scramble is reference material, so it wraps rather than being cut off. */
+.log .scr {
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.log tr.miss .t {
+  color: var(--alert);
+}

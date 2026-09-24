@@ -1,5 +1,6 @@
 import { connectGanCube, type GanCubeConnection, type GanCubeEvent } from "gan-web-bluetooth";
 import { SOLVED, applyMove } from "./cube.js";
+import { macFromDevice } from "./ble-shim.js";
 
 export interface CubeHandle {
   name: string;
@@ -46,6 +47,10 @@ export async function connectCube(
 
   const conn: GanCubeConnection = await connectGanCube(
     async (device, isFallbackCall) => {
+      // In the packaged app the device id is already the MAC, so nothing has
+      // to be asked for or remembered.
+      const native = macFromDevice(device);
+      if (native) return native;
       // First pass: let the library try the advertisement API. Only step in
       // when it has given up, so a working automatic read is never blocked.
       if (!isFallbackCall) return knownMac;

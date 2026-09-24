@@ -2,7 +2,26 @@ import "./style.css";
 import { SOLVED } from "./cube.js";
 import { Challenge } from "./challenge.js";
 import { bluetoothAvailable, connectCube, type CubeHandle } from "./conn.js";
+import {
+  cancelNativeAlarm,
+  checkPermissions,
+  installNativeBluetooth,
+  isNative,
+  requestExactAlarms,
+  requestFullScreen,
+  scheduleNativeAlarm,
+  type PermissionState,
+} from "./native.js";
 import { CubeView, cubeSvg } from "./cube3d.js";
+import { chartSvg } from "./chart.js";
+import {
+  clearSolves,
+  loadSolves,
+  recordSolve,
+  rollingAverage,
+  summarize,
+  type SolveRecord,
+} from "./stats.js";
 import { timePickerHtml, wireTimePicker } from "./picker.js";
 import {
   acquireWakeLock,
@@ -26,7 +45,7 @@ import {
 
 const app = document.getElementById("app") as HTMLElement;
 
-type Screen = "setup" | "armed" | "ringing" | "cleared";
+type Screen = "setup" | "armed" | "ringing" | "cleared" | "stats";
 
 let settings: Settings = loadSettings();
 let sound: Blob | undefined;
@@ -39,6 +58,8 @@ let screen: Screen = "setup";
 let challenge: Challenge | null = null;
 let view: CubeView | null = null;
 let alarmAt = 0;
+let solves: SolveRecord[] = [];
+let permissions: PermissionState | null = null;
 let ticker = 0;
 let frame = 0;
 
@@ -129,12 +150,20 @@ async function arm() {
   await unlockAudio(sound);
   await acquireWakeLock();
   alarmAt = nextAlarmTime(settings.alarmTime);
+  update({ armedFor: alarmAt }, false);
+  await scheduleNativeAlarm(alarmAt);
+  startCountdown();
   screen = "armed";
-  ticker = window.setInterval(() => {
-    if (screen === "armed" && Date.now() >= alarmAt) fire();
-    else if (screen === "armed") render();
-  }, 1000);
   render();
+}
+
+function startCountdown() {
+  window.clearInterval(ticker);
+  ticker = window.setInterval(() => {
+    if (screen !== "armed") return;
+    if (Date.now() >= alarmAt) fire();
+    else render();
+  }, 1000);
 }
 
 function disarm() {
@@ -142,6 +171,8 @@ function disarm() {
   ticker = 0;
   stopAlarm();
   void releaseWakeLock();
+  void cancelNativeAlarm();
+  update({ armedFor: null }, false);
   challenge = null;
   screen = "setup";
   render();
@@ -150,6 +181,7 @@ function disarm() {
 function fire() {
   window.clearInterval(ticker);
   ticker = 0;
+  update({ armedFor: null }, false);
   challenge = new Challenge(settings);
   if (cube) challenge.onState(cubeState, null, performance.now());
   screen = "ringing";
@@ -159,13 +191,18 @@ function fire() {
 
 function onPhaseChange() {
   if (!challenge) return;
+  const result = challenge.lastResult;
+  if (result) {
+    challenge.lastResult = null;
+    const record: SolveRecord = { at: Date.now(), ...result };
+    solves.push(record);
+    void recordSolve(record);
+    if (challenge.phase !== "cleared") blip(result.accepted);
+  }
   if (challenge.phase === "cleared") {
     stopAlarm();
     void releaseWakeLock();
     screen = "cleared";
-  } else if (challenge.lastResult) {
-    blip(challenge.lastResult.accepted);
-    challenge.lastResult = null;
   }
   render();
 }
@@ -220,6 +257,26 @@ function statusHtml(): string {
   return `<div class="status" id="status"><i class="dot live"></i>${esc(cube.name)}${pct}${
     low ? `<span class="warn">　充電してください</span>` : ""
   }</div>`;
+}
+
+function permissionPanel(): string {
+  if (!permissions || (permissions.exact && permissions.fullScreen)) return "";
+  return `
+    <div class="panel warn-panel">
+      <p class="fix-title">あと少し設定が必要です</p>
+      ${
+        permissions.exact
+          ? ""
+          : `<p class="note">正確な時刻に起動する権限がありません。これがないと数分ずれます。</p>
+             <button id="perm-exact">アラームの権限を開く</button>`
+      }
+      ${
+        permissions.fullScreen
+          ? ""
+          : `<p class="note">ロック画面に全画面で出る権限がありません。これがないと通知が出るだけになります。</p>
+             <button id="perm-fullscreen">全画面通知の権限を開く</button>`
+      }
+    </div>`;
 }
 
 function setupScreen(): string {
@@ -299,6 +356,10 @@ function setupScreen(): string {
              <p class="note">バッテリー残量の確認用です。繋ぎっぱなしにする必要はありません。</p>`
       }
     </div>
+
+    ${permissionPanel()}
+
+    <button id="stats">統計を見る${solves.length ? `（${solves.length}回）` : ""}</button>
 
     <div class="grow"></div>
     <button class="primary" id="arm">アラームをセット</button>
@@ -384,6 +445,77 @@ function ringingScreen(): string {
   `;
 }
 
+const secs = (v: number | null) => (v === null ? "—" : v.toFixed(2));
+
+function statsScreen(): string {
+  const st = summarize(solves);
+  const times = solves.map((s) => s.seconds);
+  const recent = solves.slice(-60);
+
+  if (!st.count) {
+    return `
+      <h1>統計</h1>
+      <p class="lede">まだ記録がありません。アラームをそろえて止めると、その一回ずつが残っていきます。</p>
+      <div class="grow"></div>
+      <button class="primary" id="back">もどる</button>`;
+  }
+
+  const cell = (label: string, value: string, sub = "") =>
+    `<div class="stat"><span class="stat-label">${label}</span>
+      <span class="stat-value">${value}</span>
+      ${sub ? `<span class="stat-sub">${sub}</span>` : ""}</div>`;
+
+  const list = solves
+    .slice(-15)
+    .reverse()
+    .map((s) => {
+      const d = new Date(s.at);
+      const when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return `<tr class="${s.accepted ? "" : "miss"}">
+        <td class="t">${s.seconds.toFixed(2)}</td>
+        <td class="when">${when}</td>
+        <td class="scr">${esc(s.scramble)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `
+    <h1>統計</h1>
+    <div class="panel">
+      <div class="stat-grid">
+        ${cell("ソルブ数", String(st.count), st.today ? `今日 ${st.today}回` : "")}
+        ${cell("ベスト", secs(st.best?.seconds ?? null))}
+        ${cell("平均", secs(st.mean))}
+        ${cell("ao5", secs(st.ao5), st.bestAo5 !== null ? `ベスト ${secs(st.bestAo5)}` : "")}
+        ${cell("ao12", secs(st.ao12), st.bestAo12 !== null ? `ベスト ${secs(st.bestAo12)}` : "")}
+        ${cell("ワースト", secs(st.worst?.seconds ?? null))}
+      </div>
+    </div>
+
+    ${
+      st.best
+        ? `<div class="panel">
+             <p class="note">ベストのスクランブル · ${new Date(st.best.at).toLocaleDateString("ja-JP")}</p>
+             <div class="scramble">${moveCells(st.best.scramble.split(" "))}</div>
+           </div>`
+        : ""
+    }
+
+    <div class="panel">
+      <p class="note">直近 ${recent.length} 回とその ao5</p>
+      ${chartSvg(recent.map((s) => s.seconds), rollingAverage(recent.map((s) => s.seconds), 5))}
+    </div>
+
+    <div class="panel">
+      <table class="log"><tbody>${list}</tbody></table>
+      ${times.length > 15 ? `<p class="note center">直近15件を表示</p>` : ""}
+    </div>
+
+    <button class="quiet" id="wipe">記録をすべて消す</button>
+    <div class="grow"></div>
+    <button class="primary" id="back">もどる</button>`;
+}
+
 function clearedScreen(): string {
   const times = challenge!.attempts.filter((a) => a.accepted).map((a) => a.seconds);
   const best = Math.min(...times);
@@ -394,6 +526,7 @@ function clearedScreen(): string {
     <div class="history">${times.map((t) => t.toFixed(2)).join(" · ")}</div>
     <p class="note center">ベスト ${best.toFixed(2)} · 平均 ${avg.toFixed(2)}</p>
     <div class="grow"></div>
+    <button id="stats">統計を見る</button>
     <button class="primary" id="again">設定にもどる</button>
   `;
 }
@@ -404,6 +537,7 @@ function render() {
   if (screen === "setup") app.innerHTML = setupScreen();
   else if (screen === "armed") app.innerHTML = armedScreen();
   else if (screen === "ringing") app.innerHTML = ringingScreen();
+  else if (screen === "stats") app.innerHTML = statsScreen();
   else app.innerHTML = clearedScreen();
   const svg = document.getElementById("cube") as SVGSVGElement | null;
   view = svg ? new CubeView(svg) : null;
@@ -535,6 +669,23 @@ function wire() {
     await unlockAudio(sound);
     await previewAlarm(settings.rampSeconds);
   });
+  on("perm-exact", "click", () => void requestExactAlarms());
+  on("perm-fullscreen", "click", () => void requestFullScreen());
+  on("stats", "click", () => {
+    screen = "stats";
+    render();
+  });
+  on("back", "click", () => {
+    screen = challenge && challenge.phase === "cleared" ? "cleared" : "setup";
+    render();
+  });
+  on("wipe", "click", () => {
+    if (window.confirm("これまでのソルブ記録をすべて消します。元に戻せません。")) {
+      solves = [];
+      void clearSolves();
+      render();
+    }
+  });
   on("arm", "click", () => void arm());
   on("disarm", "click", disarm);
   on("again", "click", () => {
@@ -597,8 +748,39 @@ function wireEscapeHatch() {
 
 /* ------------------------------------------------------------------ */
 
+async function refreshPermissions() {
+  permissions = await checkPermissions();
+}
+
 async function boot() {
+  await installNativeBluetooth();
+  await refreshPermissions();
+  if (isNative()) {
+    // Coming back from the Android settings screen should update the panel.
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState !== "visible") return;
+      await refreshPermissions();
+      if (screen === "setup") render();
+    });
+  }
   sound = await loadSound();
+  solves = (await loadSolves()).slice();
+
+  // The app can be closed, or started by the alarm itself, so a set alarm
+  // lives in storage rather than only in memory.
+  if (settings.armedFor) {
+    alarmAt = settings.armedFor;
+    if (Date.now() >= alarmAt) {
+      await unlockAudio(sound);
+      fire();
+      return;
+    }
+    await unlockAudio(sound);
+    await acquireWakeLock();
+    startCountdown();
+    screen = "armed";
+  }
+
   if (!bluetoothAvailable()) {
     app.innerHTML = `
       <h1>Cube Alarm</h1>

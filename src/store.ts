@@ -16,6 +16,8 @@ export interface Settings {
   /** remembered so the cube can be identified without asking again */
   cubeMac: string | null;
   soundName: string | null;
+  /** epoch ms of a set alarm that has not fired yet, so a restart resumes it */
+  armedFor: number | null;
 }
 
 export const DEFAULTS: Settings = {
@@ -28,6 +30,7 @@ export const DEFAULTS: Settings = {
   rampSeconds: 8,
   cubeMac: null,
   soundName: null,
+  armedFor: null,
 };
 
 const KEY = "cube-alarm.settings";
@@ -53,22 +56,30 @@ export function saveSettings(s: Settings) {
 /* ---- alarm sound, kept as a Blob so it survives a reload ---- */
 
 const DB_NAME = "cube-alarm";
-const STORE = "audio";
+const STORES = ["audio", "stats"] as const;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      for (const name of STORES) {
+        if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
+      }
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
+export function tx<T>(
+  store: (typeof STORES)[number],
+  mode: IDBTransactionMode,
+  fn: (s: IDBObjectStore) => IDBRequest
+): Promise<T> {
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const req = fn(db.transaction(STORE, mode).objectStore(STORE));
+        const req = fn(db.transaction(store, mode).objectStore(store));
         req.onsuccess = () => resolve(req.result as T);
         req.onerror = () => reject(req.error);
       })
@@ -76,10 +87,10 @@ function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest):
 }
 
 export const saveSound = (blob: Blob) =>
-  tx<void>("readwrite", (s) => s.put(blob, "alarm"));
+  tx<void>("audio", "readwrite", (s) => s.put(blob, "alarm"));
 
 export const loadSound = () =>
-  tx<Blob | undefined>("readonly", (s) => s.get("alarm")).catch(() => undefined);
+  tx<Blob | undefined>("audio", "readonly", (s) => s.get("alarm")).catch(() => undefined);
 
 export const clearSound = () =>
-  tx<void>("readwrite", (s) => s.delete("alarm")).catch(() => undefined);
+  tx<void>("audio", "readwrite", (s) => s.delete("alarm")).catch(() => undefined);

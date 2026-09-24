@@ -57,5 +57,16 @@ for (let i = 0; i < 500; i++) {
 check("500 random scrambles all leave the cube unsolved", allScrambled, true);
 check("500 random scrambles all invert back to solved", allReversible, true);
 
+// --- statistics -------------------------------------------------------
+import { averageOf, bestAverageOf, rollingAverage } from "./stats.js";
+
+// WCA average of 5 drops the fastest and the slowest.
+check("ao5 drops the extremes", averageOf([5, 10, 11, 12, 40], 5), 11);
+check("ao5 needs five solves", averageOf([5, 10, 11, 12], 5), null);
+check("ao5 uses the latest five", averageOf([100, 5, 10, 11, 12, 40], 5), 11);
+check("best ao5 scans the whole history", bestAverageOf([5, 10, 11, 12, 40, 9, 9, 9], 5), 10);
+check("rolling average is blank until it can be computed", rollingAverage([1, 2, 3, 4], 5).join(","), ",,,");
+check("rolling average lands on the fifth solve", rollingAverage([5, 10, 11, 12, 40], 5)[4], 11);
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

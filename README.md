@@ -61,11 +61,83 @@ GitHub Pages に置くのが一番楽です。
 
 **緊急停止**: 画面下のボタンを10秒長押し。キューブのバッテリーが朝に切れた場合の逃げ道です。
 
+## 統計
+
+設定画面の「統計を見る」から。そろえた記録はすべて残ります（アラームの制限時間を超えた回も、制限は目覚ましのルールであってソルブの評価ではないので記録します）。
+
+- ソルブ数（今日の回数も）、ベスト、平均、ワースト
+- ao5 / ao12 と、それぞれの歴代ベスト。WCA方式（最速と最遅を除いた平均）
+- ベストタイムを出したときのスクランブル
+- 直近60回のタイムとao5の推移グラフ
+- 直近15件のログ（タイム・日時・スクランブル）
+
+記録はIndexedDBに入ります。端末内だけで、どこにも送りません。
+
+## Androidアプリにする
+
+Web版の唯一の弱点は「朝、自分で起動できない」ことです。そこだけをネイティブで補います。
+プロトコル処理・キューブの状態管理・スクランブル判定・3D描画・統計は**すべてWeb版のまま共有**します。
+Kotlinで新しく書くのは「時間になったらアプリを前面に出す」処理だけです。
+
+### 仕組み
+
+| 層 | 担当 |
+|---|---|
+| `CubeAlarmPlugin.kt` | `AlarmManager.setAlarmClock` で起動予約。Doze中でも発火する最強の枠 |
+| `AlarmReceiver.kt` | 時刻になったら全画面インテント付き通知を出す（Androidは受信機から直接Activityを起動できないため、これが正規の手段） |
+| `MainActivity.kt` | ロック画面の上に出る・画面を点ける・WebViewの自動再生制限を外す |
+| `src/ble-shim.ts` | AndroidのWebViewにはWeb Bluetoothが無いので、Capacitor BLEプラグインの上に `navigator.bluetooth` を実装する。`gan-web-bluetooth` が実際に使うAPIだけ（1デバイス・サービス探索・notify 1本・write 1本・切断イベント） |
+
+副産物として、**Androidでは MACアドレスの手入力が不要になります**。プラグインが返すデバイスIDがそのままMACなので。
+
+### 手順
+
+```bash
+npm install
+npm run build
+npx cap add android          # android/ を生成する
+```
+
+生成後、以下を反映します。
+
+1. `native/android/*.kt` を `android/app/src/main/java/dev/dos/cubealarm/` にコピー
+   （`MainActivity.kt` は生成されたものを置き換える）
+2. `native/AndroidManifest-additions.xml` の内容を
+   `android/app/src/main/AndroidManifest.xml` に反映
+3. ビルドして転送
+
+```bash
+npm run build && npx cap sync android
+npx cap open android         # Android Studio が開く
+```
+
+以降、Web側を直したら `npm run build && npx cap sync android` だけで反映されます。
+
+### 初回だけ必要な許可
+
+アプリ内の設定画面に、足りない権限があるときだけ案内パネルが出ます。
+
+- **正確なアラーム**（Android 12以降）— これが無いと数分ずれます
+- **全画面通知**（Android 14以降）— これが無いとロック画面に通知が出るだけで、アプリが前面に来ません
+- 通知とBluetoothの権限は初回起動時に聞かれます
+
+さらに、端末の設定でこのアプリを**バッテリー最適化の対象外**にしてください。Samsungは特に積極的にアプリを眠らせます。
+
+### 検証できていないこと
+
+Androidの実機ビルドはこちらで走らせられないので、以下は初回に確認してください。
+
+- BLEシムでキューブに繋がるか（`gan-web-bluetooth` が投げるAPIは実装済みですが、プラグインの挙動差はあり得ます）
+- 全画面インテントがロック画面を突き破るか
+- WebViewが無操作で音を鳴らせるか（`mediaPlaybackRequiresUserGesture = false` を入れてあります）
+
+もし音が出ない場合は、鳴らす処理自体をKotlin側（`MediaPlayer`）に移す手もあります。そのときは言ってください。
+
 ## 既知の制約
 
-- **ページを開いたままにしておく必要があります。** ブラウザは自分を起動できないので、
-  「朝になると勝手にアプリが立ち上がる」はWeb版では実現できません。ネイティブのAndroidアプリ
-  （AlarmManager + full-screen intent）に移植すれば可能になります
+- **Web版はページを開いたままにしておく必要があります。** ブラウザは自分を起動できません。
+  上の「Androidアプリにする」を実施すると解消します。なお、セットしたアラームは保存されるので、
+  リロードやアプリの再起動をまたいでも復元されます
 - CubeStationなど他のキューブアプリが起動していると接続を奪われます。アラーム運用中は起動しないこと
 - スクランブルはランダムムーブ方式です。WCA公式のランダムステート方式にしたい場合は
   `cubing` パッケージの `randomScrambleForEvent("333")` に差し替えてください
@@ -81,6 +153,10 @@ GitHub Pages に置くのが一番楽です。
 | `src/conn.ts` | gan-web-bluetooth のラッパ。1手ごとに盤面を自前で更新し、静止時だけキューブの全体報告でズレを補正 |
 | `src/cube3d.ts` | 3Dキューブの描画。ライブラリ不使用、カメラを向いた面だけを描くので陰面消去が要らない |
 | `src/picker.ts` | 縦スクロールの時刻ピッカー（CSS scroll-snap） |
+| `src/stats.ts` | ソルブ記録と平均の計算（WCA方式のao5/ao12） |
+| `src/chart.ts` | タイム推移のSVGグラフ |
+| `src/native.ts` | ネイティブ橋渡し。ブラウザでは全部no-opになる |
+| `src/ble-shim.ts` | WebView用の `navigator.bluetooth` 実装 |
 | `src/alarm.ts` | 音量ランプ付きアラーム、電子音フォールバック、Wake Lock |
 | `src/store.ts` | 設定はlocalStorage、音声ファイルはIndexedDB |
 | `src/main.ts` | 画面遷移とイベント配線 |

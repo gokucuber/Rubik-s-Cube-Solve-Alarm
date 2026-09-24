@@ -17,6 +17,8 @@ export type Phase =
 export interface Attempt {
   seconds: number;
   accepted: boolean;
+  /** the scramble this solve started from, kept for the record books */
+  scramble: string;
 }
 
 export class Challenge {
@@ -123,7 +125,7 @@ export class Challenge {
 
     let accepted = true;
     if (limitType === "perSolve") accepted = seconds <= limitSeconds;
-    const attempt: Attempt = { seconds, accepted };
+    const attempt: Attempt = { seconds, accepted, scramble: this.scramble };
     this.lastResult = attempt;
     this.attempts.push(attempt);
 
