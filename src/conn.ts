@@ -19,6 +19,8 @@ export interface CubeCallbacks {
    * correction after drift). `at` is a performance.now()-based timestamp.
    */
   onState(state: string, move: string | null, at: number): void;
+  /** Cube orientation, for showing the on-screen cube the way it is held. */
+  onOrientation(q: { x: number; y: number; z: number; w: number }): void;
   onBattery(level: number): void;
   onDisconnect(): void;
 }
@@ -71,6 +73,9 @@ export async function connectCube(
         }
         break;
       }
+      case "GYRO":
+        cb.onOrientation(event.quaternion);
+        break;
       case "BATTERY":
         battery = event.batteryLevel;
         cb.onBattery(event.batteryLevel);

@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "test": "tsx src/cube.test.ts && tsx src/challenge.test.ts"
+    "test": "tsx src/cube.test.ts && tsx src/challenge.test.ts && tsx src/cube3d.test.ts"
   },
   "dependencies": {
     "gan-web-bluetooth": "^3.0.2",

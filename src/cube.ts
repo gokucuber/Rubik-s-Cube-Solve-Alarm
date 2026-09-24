@@ -10,7 +10,7 @@
 export const SOLVED =
   "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
 
-type Vec = readonly [number, number, number];
+export type Vec = readonly [number, number, number];
 
 /** Face order is URFDLB. For each: outward normal, and the 3D directions of
  *  "one column to the right" and "one row down" in Kociemba reading order. */
@@ -43,7 +43,7 @@ const rot = (v: Vec, n: Vec): Vec => {
   return [-c[0] + n[0] * d, -c[1] + n[1] * d, -c[2] + n[2] * d];
 };
 
-/** facelet index -> { cubie position, sticker normal } */
+/** facelet index -> { cubie position, sticker normal }; also used for drawing */
 const GEOMETRY: { p: Vec; m: Vec }[] = [];
 /** "pos|normal" -> facelet index */
 const INDEX = new Map<string, number>();
@@ -76,6 +76,9 @@ const PERM: number[][] = FACES.map((f) => {
 });
 
 const FACE_LETTERS = FACES.map((f) => f.name);
+
+/** Where every facelet sits in space, in cubie units. Shared with the renderer. */
+export const FACELET_GEOMETRY: readonly { p: Vec; m: Vec }[] = GEOMETRY;
 
 /** Apply a single move token ("R", "U'", "F2", ...) to a facelet string. */
 export function applyMove(state: string, token: string): string {

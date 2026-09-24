@@ -419,25 +419,47 @@ button:disabled {
   color: #1a1600;
 }
 
-/* ---------- live cube net ---------- */
+/* ---------- live 3D cube ---------- */
 
-.net {
+.cube3d {
   display: block;
   width: 100%;
-  max-width: 240px;
+  max-width: 230px;
   margin-inline: auto;
-  border-radius: 8px;
+  border-radius: 12px;
   outline: 2px solid transparent;
-  outline-offset: 4px;
+  outline-offset: 2px;
   transition: outline-color 0.2s;
+  touch-action: none; /* dragging rotates instead of scrolling the page */
+  cursor: grab;
 }
 
-.net.off {
+.cube3d:active {
+  cursor: grabbing;
+}
+
+.cube3d.off {
   outline-color: var(--face-d);
 }
 
-.net rect {
-  fill: var(--line);
+/* The body of the cube, visible in the gaps between stickers. */
+.cube3d .plate {
+  fill: #0a0c10;
+}
+
+.cube-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+button.tiny {
+  width: auto;
+  padding: 7px 12px;
+  font-size: 13px;
+  border-radius: 999px;
+  color: var(--dim);
+  background: none;
 }
 
 .s.U { fill: var(--face-u); }

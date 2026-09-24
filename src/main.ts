@@ -2,7 +2,7 @@ import "./style.css";
 import { SOLVED } from "./cube.js";
 import { Challenge } from "./challenge.js";
 import { bluetoothAvailable, connectCube, type CubeHandle } from "./conn.js";
-import { netSvg, paintNet } from "./net.js";
+import { CubeView, cubeSvg } from "./cube3d.js";
 import { timePickerHtml, wireTimePicker } from "./picker.js";
 import {
   acquireWakeLock,
@@ -37,6 +37,7 @@ let battery: number | null = null;
 let cubeState = SOLVED;
 let screen: Screen = "setup";
 let challenge: Challenge | null = null;
+let view: CubeView | null = null;
 let alarmAt = 0;
 let ticker = 0;
 let frame = 0;
@@ -58,6 +59,7 @@ async function connect() {
           if (challenge && challenge.onState(state, move, at)) onPhaseChange();
           else refreshLive();
         },
+        onOrientation: (q) => view?.setOrientation(q),
         onBattery: (level) => {
           battery = level;
           refreshStatus();
@@ -202,6 +204,12 @@ window.addEventListener("beforeunload", (e) => {
 const esc = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
+const cubeControls = () => `
+  <div class="cube-controls">
+    <button class="tiny" id="recentre">向きをそろえる</button>
+    <button class="tiny" id="follow"></button>
+  </div>`;
+
 const moveCells = (moves: string[], cls = "") =>
   moves.map((m, i) => `<div class="move ${m[0]} ${cls}" data-i="${i}">${esc(m)}</div>`).join("");
 
@@ -280,7 +288,8 @@ function setupScreen(): string {
       ${connectError ? `<p class="note warn">${esc(connectError)}</p>` : ""}
       ${
         cube
-          ? `${netSvg("net")}
+          ? `${cubeSvg("cube")}
+             ${cubeControls()}
              <p class="note center" id="setup-cube-note"></p>
              <button id="disconnect">切断する</button>
              <p class="note">繋いだまま寝てもいいですが、キューブのバッテリーを一晩使います。朝に繋ぎ直せるので、残量が心細ければ切ってください。</p>`
@@ -337,8 +346,9 @@ function ringingScreen(): string {
     body = `
       <p class="big-instruction">まずキューブをそろえて</p>
       <p class="lede center">そろった状態から始めます。この1回は回数に入りません。</p>
-      ${netSvg("net")}
-      <p class="note center">画面の図が手元のキューブと違うときは、キューブの記録がずれています。手元をそろえてから下のボタンを押してください。</p>
+      ${cubeSvg("cube")}
+      ${cubeControls()}
+      <p class="note center">画面のキューブが手元と違うときは、キューブの記録がずれています。手元をそろえてから下のボタンを押してください。</p>
       <div class="grow"></div>
       <button id="reset">手元はそろっているのに進まない</button>`;
   } else if (c.phase === "scrambling") {
@@ -347,19 +357,20 @@ function ringingScreen(): string {
       <div class="scramble" id="scramble">${moveCells(c.tracker!.moves)}</div>
       <div id="fix" class="fix" aria-live="assertive"></div>
       <p class="note center" id="scr-progress"></p>
-      ${netSvg("net")}
+      ${cubeSvg("cube")}
+      ${cubeControls()}
       <div class="grow"></div>`;
   } else if (c.phase === "ready") {
     body = `
       <p class="big-instruction">回し始めたらスタート</p>
       <div class="timer" id="timer">0.00</div>
-      ${netSvg("net")}
+      ${cubeSvg("cube")}
       <div class="grow"></div>`;
   } else {
     body = `
       <div class="timer" id="timer">${c.elapsed.toFixed(2)}</div>
       <p class="note center">${esc(settings.limitType === "perSolve" ? `${settings.limitSeconds}秒以内` : "そろえろ")}</p>
-      ${netSvg("net")}
+      ${cubeSvg("cube")}
       <div class="grow"></div>`;
   }
 
@@ -394,6 +405,8 @@ function render() {
   else if (screen === "armed") app.innerHTML = armedScreen();
   else if (screen === "ringing") app.innerHTML = ringingScreen();
   else app.innerHTML = clearedScreen();
+  const svg = document.getElementById("cube") as SVGSVGElement | null;
+  view = svg ? new CubeView(svg) : null;
   wire();
   refreshLive();
   if (screen === "ringing") loopTimer();
@@ -409,8 +422,7 @@ function refreshStatus() {
  * the screen keeps up with fast turning without being rebuilt.
  */
 function refreshLive() {
-  const net = document.getElementById("net");
-  if (net) paintNet(net, cubeState);
+  view?.setState(cubeState);
 
   const note = document.getElementById("setup-cube-note");
   if (note) {
@@ -424,7 +436,7 @@ function refreshLive() {
   const cells = document.querySelectorAll<HTMLElement>("#scramble .move");
   if (!p || !cells.length) return;
 
-  net?.classList.toggle("off", !p.onTrack);
+  document.getElementById("cube")?.classList.toggle("off", !p.onTrack);
 
   cells.forEach((cell, i) => {
     cell.classList.toggle("done", i < p.done);
@@ -500,6 +512,17 @@ function wire() {
     await saveSound(file);
     update({ soundName: file.name });
   });
+
+  on("recentre", "click", () => view?.recentre());
+  const followBtn = document.getElementById("follow");
+  if (followBtn && view) {
+    const label = () => (followBtn.textContent = view!.following ? "手の向きに追従: ON" : "手の向きに追従: OFF");
+    label();
+    followBtn.addEventListener("click", () => {
+      view!.setFollow(!view!.following);
+      label();
+    });
+  }
 
   on("connect", "click", () => void connect());
   on("disconnect", "click", () => {
